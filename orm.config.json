@@ -9,5 +9,8 @@
     "migrations": ["src/database/migrations/*{.ts,.js}"],
     "cli": {
         "migrationsDir": "src/database/migrations"
+    },
+    "options": {
+        "trustServerCertificate": true
     }
 }
