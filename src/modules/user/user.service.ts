@@ -11,6 +11,10 @@ import { getConnection } from 'typeorm';
 import { Role } from '../role/role.entity';
 import { RoleRepository } from '../role/role.repository';
 import { status } from 'src/shared/entity.status.enum';
+import { ReadUserDTO, CreateUserDTO, UpdateUserDTO } from './dto';
+import { plainToClass } from 'class-transformer';
+import { RoleType } from '../role/role.types.enum';
+import * as bcrypt from 'bcryptjs';
 
 @Injectable()
 export class UserService {
@@ -21,7 +25,7 @@ export class UserService {
     private readonly _roleRepository: RoleRepository,
   ) {}
 
-  async get(id: number): Promise<User> {
+  async get(id: number): Promise<ReadUserDTO> {
     if (!id) {
       throw new BadRequestException('id must be send');
     }
@@ -33,34 +37,60 @@ export class UserService {
       throw new NotFoundException();
     }
 
-    return user;
+    return plainToClass(ReadUserDTO, user);
   }
 
-  async getAll(): Promise<User[]> {
+  async getAll(): Promise<ReadUserDTO[]> {
     const users: User[] = await this._userRepository.find({
       where: { status: status.ACTIVE },
     });
 
-    return users;
+    return users.map((user: User) => plainToClass(ReadUserDTO, user));
   }
 
-  async create(user: User): Promise<User> {
+  async create(userDTO: Partial<CreateUserDTO>): Promise<ReadUserDTO> {
+    const { username, email, password } = userDTO;
+    const user = new User();
+    user.username = username;
+    user.email = email;
+
+    const roleRepository: RoleRepository = await getConnection().getRepository(
+      Role,
+    );
+    const defaultRole: Role = await roleRepository.findOne({
+      where: { name: RoleType.GENERAL },
+    });
+
+    user.roles = [defaultRole];
+
     const details = new UserDetails();
     user.details = details;
-    const repo = await getConnection().getRepository(Role);
-    const defaultRole = await repo.findOne({ where: { name: 'GENERAL' } });
-    user.roles = [defaultRole];
-    const savedUser = await this._userRepository.save(user);
-    return savedUser;
+
+    const salt = await bcrypt.genSalt(10);
+    user.password = await bcrypt.hash(password, salt);
+
+    await user.save();
+
+    return plainToClass(ReadUserDTO, user);
   }
 
-  async update(id: number, user: User): Promise<void> {
-    // const updateUser: User = await this._userRepository.update(id, user);
-    await this._userRepository.update(id, user);
-    // return this._mapperService.map<User, UserDTO>(updateUser, new UserDTO());
+  async update(id: number, user: Partial<UpdateUserDTO>): Promise<ReadUserDTO> {
+    if (!id) {
+      throw new BadRequestException('id must be send');
+    }
+    const foundUser: User = await this._userRepository.findOne(id, {
+      where: { status: status.ACTIVE },
+    });
+
+    if (!foundUser) {
+      throw new NotFoundException('User does not exist');
+    }
+    foundUser.username = user.username;
+    const updateUser = await this._userRepository.save(foundUser);
+    return plainToClass(ReadUserDTO, updateUser);
   }
 
-  async delete(id: number): Promise<void> {
+  async delete(id: number): Promise<{ msg: string }> {
     if (!id) {
       throw new BadRequestException('id must be send');
     }
@@ -72,9 +102,10 @@ export class UserService {
       throw new NotFoundException();
     }
     await this._userRepository.update(id, { status: 'INACTIVE' });
+    return { msg: 'user deleted' };
   }
 
-  async setRoleToUser(userId: number, roleId: number) {
+  async setRoleToUser(userId: number, roleId: number): Promise<boolean> {
     const userExist = await this._userRepository.findOne(userId, {
       where: { status: status.ACTIVE },
     });

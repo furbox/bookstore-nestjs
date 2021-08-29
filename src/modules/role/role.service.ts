@@ -6,6 +6,11 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { RoleRepository } from './role.repository';
 import { Role } from '../role/role.entity';
+import { ReadRoleDTO } from './dto/read-role.dto';
+import { plainToClass } from 'class-transformer';
+import { CreateRoleDTO } from './dto/create-role.dto';
+import { UpdateRoleDTO } from './dto/update-role.dto';
+import { exists } from 'fs';
 
 @Injectable()
 export class RoleService {
@@ -14,7 +19,7 @@ export class RoleService {
     private readonly _roleRepository: RoleRepository,
   ) {}
 
-  async get(id: number): Promise<Role> {
+  async get(id: number): Promise<ReadRoleDTO> {
     if (!id) {
       throw new BadRequestException('id must be send');
     }
@@ -26,26 +31,42 @@ export class RoleService {
       throw new NotFoundException();
     }
 
-    return role;
+    return plainToClass(ReadRoleDTO, role);
   }
 
-  async getAll(): Promise<Role[]> {
+  async getAll(): Promise<ReadRoleDTO[]> {
     const roles: Role[] = await this._roleRepository.find({
       where: { status: 'ACTIVE' },
     });
 
-    return roles;
+    return roles.map((role: Role) => plainToClass(ReadRoleDTO, role));
   }
 
-  async create(role: Role): Promise<Role> {
+  async create(role: Partial<CreateRoleDTO>): Promise<ReadRoleDTO> {
     const savedRole = await this._roleRepository.save(role);
-    return savedRole;
+    return plainToClass(ReadRoleDTO, savedRole);
   }
 
-  async update(id: number, role: Role): Promise<void> {
-    // const updateRole: Role = await this._roleRepository.update(id, role);
-    await this._roleRepository.update(id, role);
-    // return this._mapperService.map<Role, Role>(updateRole, new Role());
+  async update(
+    roleId: number,
+    role: Partial<UpdateRoleDTO>,
+  ): Promise<ReadRoleDTO> {
+    if (!roleId) {
+      throw new BadRequestException('id must be send');
+    }
+    const roleExits: Role = await this._roleRepository.findOne(roleId, {
+      where: { status: 'ACTIVE' },
+    });
+
+    if (!roleExits) {
+      throw new NotFoundException();
+    }
+    roleExits.name = role.name;
+    roleExits.description = role.description;
+
+    const updateRole = await this._roleRepository.save(roleExits);
+
+    return plainToClass(ReadRoleDTO, updateRole);
   }
 
   async delete(id: number): Promise<void> {
