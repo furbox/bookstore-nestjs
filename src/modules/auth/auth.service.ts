@@ -13,6 +13,8 @@ import * as bcrypt from 'bcryptjs';
 import { UnauthorizedException } from '@nestjs/common';
 import { IJwtPayload } from './jwt-payload.interface';
 import { RoleType } from '../role/role.types.enum';
+import { plainToClass } from 'class-transformer';
+import { LoggedInDTO } from './dto/logged-in.dto';
 
 @Injectable()
 export class AuthService {
@@ -34,7 +36,7 @@ export class AuthService {
     return this._authRepository.signup(signUpDTO);
   }
 
-  async signin(signInDTO: SignInDTO): Promise<{ token: string }> {
+  async signin(signInDTO: SignInDTO): Promise<LoggedInDTO> {
     const { username, password } = signInDTO;
     const user: User = await this._authRepository.findOne({
       where: { username },
@@ -56,8 +58,8 @@ export class AuthService {
       roles: user.roles.map((r) => r.name as RoleType),
     };
 
-    const token = await this._jwtService.sign(payload);
+    const token = this._jwtService.sign(payload);
 
-    return { token };
+    return plainToClass(LoggedInDTO, { token, user });
   }
 }
